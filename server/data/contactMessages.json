@@ -1,0 +1,124 @@
+import fs from 'fs';
+import path from 'path';
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+
+dotenv.config();
+
+const app = express();
+const PORT = Number(process.env.PORT || 5000);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const dataDir = path.join(__dirname, 'data');
+const messagesFile = path.join(dataDir, 'contactMessages.json');
+
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+
+if (!fs.existsSync(messagesFile)) {
+  fs.writeFileSync(messagesFile, '[]', 'utf-8');
+}
+
+const rateLimitMap = new Map();
+
+app.use(cors({ origin: process.env.CLIENT_URL || true, credentials: true }));
+app.use(express.json({ limit: '1mb' }));
+
+const sanitizeString = (input) => {
+  if (typeof input !== 'string') return '';
+  return input.replace(/[<>]/g, '').trim();
+};
+
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || '');
+
+const getClientIp = (req) => {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') return forwarded.split(',')[0].trim();
+  return req.socket.remoteAddress || 'unknown';
+};
+
+const isRateLimited = (ip) => {
+  const now = Date.now();
+  const window = rateLimitMap.get(ip) || [];
+  const recent = window.filter((ts) => now - ts < 60000);
+
+  if (recent.length >= 5) {
+    rateLimitMap.set(ip, recent);
+    return true;
+  }
+
+  recent.push(now);
+  rateLimitMap.set(ip, recent);
+  return false;
+};
+
+const requireAdminAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization || '';
+  const expected = 'Basic ' + Buffer.from(`${process.env.ADMIN_USERNAME || 'admin'}:${process.env.ADMIN_PASSWORD || 'change-me'}`).toString('base64');
+
+  if (authHeader !== expected) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Admin"');
+    return res.status(401).json({ message: 'Admin authentication required.' });
+  }
+
+  return next();
+};
+
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', name: 'Muhammad Rehan Portfolio API' });
+});
+
+app.post('/api/contact', (req, res) => {
+  const ip = getClientIp(req);
+  if (isRateLimited(ip)) {
+    return res.status(429).json({ message: 'Too many submissions. Please wait a moment and try again.' });
+  }
+
+  const raw = req.body || {};
+  const name = sanitizeString(raw.name);
+  const email = sanitizeString(raw.email).toLowerCase();
+  const message = sanitizeString(raw.message);
+
+  if (!name || !email || !message) {
+    return res.status(400).json({ message: 'Please complete all fields before sending.' });
+  }
+
+  if (name.length < 2 || name.length > 80) {
+    return res.status(400).json({ message: 'Name must be between 2 and 80 characters.' });
+  }
+
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ message: 'Please provide a valid email address.' });
+  }
+
+  if (message.length < 10 || message.length > 1500) {
+    return res.status(400).json({ message: 'Message must be between 10 and 1500 characters.' });
+  }
+
+  const newMessage = {
+    id: crypto.randomUUID(),
+    name,
+    email,
+    message,
+    createdAt: new Date().toISOString(),
+    ip,
+  };
+
+  const existing = JSON.parse(fs.readFileSync(messagesFile, 'utf-8'));
+  existing.unshift(newMessage);
+  fs.writeFileSync(messagesFile, JSON.stringify(existing, null, 2), 'utf-8');
+
+  return res.status(201).json({ message: 'Your message was sent successfully.' });
+});
+
+app.get('/api/admin/messages', requireAdminAuth, (_req, res) => {
+  const messages = JSON.parse(fs.readFileSync(messagesFile, 'utf-8'));
+  return res.json(messages);
+});
+
+app.listen(PORT, () => {
+  console.log(`Portfolio backend running on http://localhost:${PORT}`);
+});

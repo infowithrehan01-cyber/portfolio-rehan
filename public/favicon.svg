@@ -1,0 +1,46 @@
+# Muhammad Rehan Portfolio
+
+A premium cinematic portfolio built with React, TypeScript, Tailwind CSS, and a lightweight Express API.
+
+## Features
+
+- Editorial dark luxury layout
+- Responsive mobile-first design
+- Full-screen hero and asymmetric composition
+- Contact form with backend validation
+- Protected admin route for viewing messages
+- Centralized content config
+- SEO metadata and Open Graph tags
+
+## Setup
+
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+2. Copy the example environment file:
+   ```bash
+   cp .env.example .env
+   ```
+3. Update the values in `.env` for your desired admin credentials and port.
+4. Start the backend:
+   ```bash
+   npm run server
+   ```
+5. Start the frontend in another terminal:
+   ```bash
+   npm run dev
+   ```
+6. Visit `http://localhost:5173`
+
+## Admin Access
+
+Use the credentials from your `.env` file on the `/admin` route to view submitted contact messages.
+
+## Content Editing
+
+All editable portfolio info is stored in `src/data/siteConfig.ts`.
+
+## Notes
+
+The current project uses placeholder asset files in `public/images` so the portfolio can be previewed immediately. Replace these with your real uploaded photographs in the config file when available.
